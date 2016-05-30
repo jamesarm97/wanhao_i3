@@ -861,6 +861,7 @@ ISR(PWM_TIMER_VECTOR)
     {
         counterPeriodical=0;
         executePeriodical=1;
+		updateUIPeriodical++;
     }
 // read analog values
 #if ANALOG_INPUTS>0

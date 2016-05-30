@@ -65,16 +65,22 @@ void Commands::commandLoop()
 
 void Commands::checkForPeriodicalActions()
 {
-    if(!executePeriodical) return;
-    executePeriodical=0;
-    Extruder::manageTemperatures();
-    if(--counter250ms==0)
-    {
-        if(manageMonitor<=1+NUM_EXTRUDER)
-            writeMonitor();
-        counter250ms=5;
-    }
-    UI_SLOW;
+    if(executePeriodical)
+	{
+		executePeriodical=0;
+		Extruder::manageTemperatures();
+		if(--counter250ms==0)
+		{
+			if(manageMonitor<=1+NUM_EXTRUDER)
+				writeMonitor();
+			counter250ms=5;
+		}
+	}
+	if (updateUIPeriodical)
+	{
+		updateUIPeriodical = 0;
+		UI_SLOW;
+	}
 }
 
 /** \brief Waits until movement cache is empty.
@@ -1053,7 +1059,7 @@ void Commands::executeGCode(GCode *com)
             break;
 #if FEATURE_DITTO_PRINTING
         case 280:
-            if(com->hasS())   // Set ditto mode S: 0 = off, 1 = on
+            if(com->hasS())   // Set ditto mode S: 0 = off, 1 = 1 extra extruder, 2 = 2 extra extruder, 3 = 3 extra extruders
             {
                 Extruder::dittoMode = com->S;
             }

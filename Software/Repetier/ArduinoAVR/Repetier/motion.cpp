@@ -89,6 +89,7 @@ volatile bool PrintLine::nlFlag = false;
 uint8_t PrintLine::linesWritePos = 0;            ///< Position where we write the next cached line move.
 volatile uint8_t PrintLine::linesCount = 0;      ///< Number of lines cached 0 = nothing to do.
 uint8_t PrintLine::linesPos = 0;                 ///< Position for executing line movement.
+volatile uint8_t PrintLine::chanceToUpdateUI = 0;
 
 /**
 Move printer the given number of steps. Puts the move into the queue. Used by e.g. homing commands.
@@ -146,6 +147,7 @@ void PrintLine::queueCartesianMove(uint8_t check_endstops,uint8_t pathOptimize)
     waitForXFreeLines(1);
     uint8_t newPath=insertWaitMovesIfNeeded(pathOptimize, 0);
     PrintLine *p = getNextWriteLine();
+	p->lineChance = 0;
 
     float axis_diff[4]; // Axis movement in mm
     if(check_endstops) p->flags = FLAG_CHECK_ENDSTOPS;
@@ -557,6 +559,17 @@ inline void PrintLine::computeMaxJunctionSpeed(PrintLine *previous,PrintLine *cu
         return;
     }
 #endif
+	// Calculate the lineChance here.
+	float currentSpeed = sqrt(current->speedX * current->speedX + current->speedY * current->speedY);
+	float previousSpeed = sqrt(previous->speedX * previous->speedX + previous->speedY * previous->speedY);
+	
+	float dot_product = (current->speedX * previous->speedX + current->speedY * previous->speedY) / (currentSpeed * previousSpeed);
+	if (dot_product < 0.174)
+	{
+		// Turnning a corner greater than 60 dgrees.
+		previous->lineChance = 1;
+	}
+	
     // First we compute the normalized jerk for speed 1
     float dx = current->speedX-previous->speedX;
     float dy = current->speedY-previous->speedY;
@@ -1725,6 +1738,7 @@ long PrintLine::bresenhamStep() // Version for delta printer
             Printer::setYDirection(curd->isYPositiveMove());
             Printer::setZDirection(curd->isZPositiveMove());
         }
+		
 #if defined(USE_ADVANCE)
         if(!Printer::isAdvanceActivated()) // Set direction if no advance/OPS enabled
 #endif
@@ -2054,6 +2068,7 @@ long PrintLine::bresenhamStep() // version for cartesian printer
 #if CPU_ARCH==ARCH_ARM
             PrintLine::nlFlag = false;
 #endif
+			PrintLine::chanceToUpdateUI = 1;
             return 2000;
         }
         HAL::allowInterrupts();
@@ -2062,6 +2077,7 @@ long PrintLine::bresenhamStep() // version for cartesian printer
         if(Printer::debugNoMoves())   // simulate a move, but do nothing in reality
         {
             removeCurrentLineForbidInterrupt();
+			PrintLine::chanceToUpdateUI = 1;
             return 1000;
         }
 #endif
@@ -2076,6 +2092,7 @@ long PrintLine::bresenhamStep() // version for cartesian printer
 #if CPU_ARCH==ARCH_ARM
                 PrintLine::nlFlag = false;
 #endif
+				PrintLine::chanceToUpdateUI = 1;
                 return 2000;
             }
             long wait = cur->getWaitTicks();
@@ -2093,6 +2110,15 @@ long PrintLine::bresenhamStep() // version for cartesian printer
         if(cur->isXMove()) Printer::enableXStepper();
         if(cur->isYMove()) Printer::enableYStepper();
 #endif
+		if (cur->lineChance)
+		{
+			PrintLine::chanceToUpdateUI = 1;
+		}
+		else
+		{
+			PrintLine::chanceToUpdateUI = 0;
+		}
+
         if(cur->isZMove())
         {
             Printer::enableZStepper();
@@ -2236,7 +2262,7 @@ long PrintLine::bresenhamStep() // version for cartesian printer
             }
             else if (cur->moveDecelerating())     // time to slow down
             {
-                unsigned int v = HAL::ComputeV(Printer::timer,cur->fAcceleration);
+               unsigned int v = HAL::ComputeV(Printer::timer,cur->fAcceleration);
                 if (v > Printer::vMaxReached)   // if deceleration goes too far it can become too large
                     v = cur->vEnd;
                 else

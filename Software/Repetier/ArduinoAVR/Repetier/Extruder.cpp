@@ -30,6 +30,7 @@
 uint8_t manageMonitor = 255; ///< Temp. we want to monitor with our host. 1+NUM_EXTRUDER is heated bed
 unsigned int counterPeriodical = 0;
 volatile uint8_t executePeriodical = 0;
+volatile uint8_t updateUIPeriodical = 0;
 uint8_t counter250ms=25;
 #if FEATURE_DITTO_PRINTING
 uint8_t Extruder::dittoMode = 0;
@@ -412,6 +413,22 @@ void Extruder::setTemperatureForExtruder(float temperatureInCelsius,uint8_t extr
         TemperatureController *tc2 = tempController[1];
         tc2->setTargetTemperature(temperatureInCelsius);
         if(temperatureInCelsius>=EXTRUDER_FAN_COOL_TEMP) extruder[1].coolerPWM = extruder[1].coolerSpeed;
+#if NUM_EXTRUDER > 2
+        if(Extruder::dittoMode > 1 && extr == 0)
+        {
+            TemperatureController *tc2 = tempController[2];
+            tc2->setTargetTemperature(temperatureInCelsius);
+            if(temperatureInCelsius>=EXTRUDER_FAN_COOL_TEMP) extruder[2].coolerPWM = extruder[2].coolerSpeed;
+        }
+#endif
+#if NUM_EXTRUDER > 3
+        if(Extruder::dittoMode > 2 && extr == 0)
+        {
+            TemperatureController *tc2 = tempController[3];
+            tc2->setTargetTemperature(temperatureInCelsius);
+            if(temperatureInCelsius>=EXTRUDER_FAN_COOL_TEMP) extruder[3].coolerPWM = extruder[3].coolerSpeed;
+        }
+#endif
     }
 #endif // FEATURE_DITTO_PRINTING
     bool alloff = true;
@@ -456,6 +473,14 @@ void Extruder::disableCurrentExtruderMotor()
     {
         if(extruder[1].enablePin > -1)
             digitalWrite(extruder[1].enablePin,!extruder[1].enableOn);
+#if NUM_EXTRUDER > 2
+        if(Extruder::dittoMode > 1 && extruder[2].enablePin > -1)
+            digitalWrite(extruder[2].enablePin,!extruder[2].enableOn);
+#endif
+#if NUM_EXTRUDER > 3
+        if(Extruder::dittoMode > 2 && extruder[3].enablePin > -1)
+            digitalWrite(extruder[3].enablePin,!extruder[3].enableOn);
+#endif
     }
 #endif
 }
@@ -1021,7 +1046,7 @@ void TemperatureController::autotunePID(float temp,uint8_t controllerId,bool sto
             Extruder::disableAllHeater();
             if(storeValues)
             {
-                pidDGain = Kp;
+                pidPGain = Kp;
                 pidIGain = Ki;
                 pidDGain = Kd;
                 heatManager = 1;

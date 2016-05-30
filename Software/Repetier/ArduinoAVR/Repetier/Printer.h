@@ -154,10 +154,11 @@ public:
     static float memoryY;
     static float memoryZ;
     static float memoryE;
+    static float memoryF;
 #endif
 #ifdef XY_GANTRY
-    static char motorX;
-    static char motorY;
+    static int8_t motorX;
+    static int8_t motorY;
 #endif
 #ifdef DEBUG_SEGMENT_LENGTH
     static float maxRealSegmentLength;
@@ -624,6 +625,9 @@ public:
     static uint8_t setDestinationStepsFromGCode(GCode *com);
     static void moveTo(float x,float y,float z,float e,float f);
     static void moveToReal(float x,float y,float z,float e,float f);
+    static void homeXAxis();
+    static void homeYAxis();
+    static void homeZAxis();
     static void homeAxis(bool xaxis,bool yaxis,bool zaxis); /// Home axis
     static void setOrigin(float xOff,float yOff,float zOff);
     static bool isPositionAllowed(float x,float y,float z);
@@ -658,9 +662,7 @@ public:
 #endif
     static void zBabystep();
 private:
-    static void homeXAxis();
-    static void homeYAxis();
-    static void homeZAxis();
+
 };
 
 #endif // PRINTER_H_INCLUDED

@@ -139,10 +139,11 @@ float Printer::memoryX;
 float Printer::memoryY;
 float Printer::memoryZ;
 float Printer::memoryE;
+float Printer::memoryF;
 #endif
 #ifdef XY_GANTRY
-char Printer::motorX;
-char Printer::motorY;
+int8_t Printer::motorX;
+int8_t Printer::motorY;
 #endif
 #ifdef DEBUG_SEGMENT_LENGTH
     float Printer::maxRealSegmentLength = 0;
@@ -842,18 +843,18 @@ void Printer::MemoryPosition()
     updateCurrentPosition(false);
     realPosition(memoryX,memoryY,memoryZ);
     memoryE = currentPositionSteps[E_AXIS]*axisStepsPerMM[E_AXIS];
+    memoryF = feedrate;
 }
 
 void Printer::GoToMemoryPosition(bool x,bool y,bool z,bool e,float feed)
 {
     bool all = !(x || y || z);
-    float oldFeedrate = feedrate;
-    moveToReal((all || x ? memoryX : IGNORE_COORDINATE)
-               ,(all || y ? memoryY : IGNORE_COORDINATE)
-               ,(all || z ? memoryZ : IGNORE_COORDINATE)
+    moveToReal((all || x ? (lastCmdPos[X_AXIS] = memoryX) : IGNORE_COORDINATE)
+               ,(all || y ?(lastCmdPos[Y_AXIS] = memoryY) : IGNORE_COORDINATE)
+               ,(all || z ? (lastCmdPos[Z_AXIS] = memoryZ) : IGNORE_COORDINATE)
                ,(e ? memoryE:IGNORE_COORDINATE),
                feed);
-    feedrate = oldFeedrate;
+    feedrate = memoryF;
 }
 #endif
 
@@ -1390,6 +1391,7 @@ void Printer::buildTransformationMatrix(float h1,float h2,float h3)
     autolevelTransformation[4] = autolevelTransformation[8];
     autolevelTransformation[5] = -autolevelTransformation[7];
     // cross(y,z)
+	/*
     autolevelTransformation[0] = autolevelTransformation[4]*autolevelTransformation[8]-autolevelTransformation[5]*autolevelTransformation[7];
     autolevelTransformation[1] = autolevelTransformation[5]*autolevelTransformation[6]-autolevelTransformation[3]*autolevelTransformation[8];
     autolevelTransformation[2] = autolevelTransformation[3]*autolevelTransformation[7]-autolevelTransformation[4]*autolevelTransformation[6];
@@ -1399,6 +1401,18 @@ void Printer::buildTransformationMatrix(float h1,float h2,float h3)
     len = sqrt(autolevelTransformation[4]*autolevelTransformation[4]+autolevelTransformation[5]*autolevelTransformation[5]);
     autolevelTransformation[4] /= len;
     autolevelTransformation[5] /= len;
+	*/
+    autolevelTransformation[0] = autolevelTransformation[4]*autolevelTransformation[8]-autolevelTransformation[5]*autolevelTransformation[7];
+    autolevelTransformation[1] = autolevelTransformation[5]*autolevelTransformation[6]/*-autolevelTransformation[3]*autolevelTransformation[8]*/; //autolevelTransformation[3] == 0 !
+    autolevelTransformation[2] = /*autolevelTransformation[3]*autolevelTransformation[7]*/-autolevelTransformation[4]*autolevelTransformation[6];
+    len = sqrt(autolevelTransformation[0]*autolevelTransformation[0]+autolevelTransformation[1]*autolevelTransformation[1]+autolevelTransformation[2]*autolevelTransformation[2]); //Shouldn't autolevelTransformation[1] also get normed?!?
+    autolevelTransformation[0] /= len;
+    autolevelTransformation[1] /= len;
+    autolevelTransformation[2] /= len;
+    len = sqrt(autolevelTransformation[4]*autolevelTransformation[4]+autolevelTransformation[5]*autolevelTransformation[5]);
+    autolevelTransformation[4] /= len;
+    autolevelTransformation[5] /= len;
+
     Com::printArrayFLN(Com::tInfo,autolevelTransformation,9,5);
 }
 #endif

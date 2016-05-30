@@ -24,8 +24,10 @@ extern const int8_t encoder_table[16] PROGMEM ;
 #include <inttypes.h>
 #include <ctype.h>
 
-
-
+////////////////////////////////////////////
+#include "Printer.h"
+void ui_menu_build_plate_level();
+/////////////////////////////////////////
 
 #if BEEPER_TYPE==2 && defined(UI_HAS_I2C_KEYS) && UI_I2C_KEY_ADDRESS!=BEEPER_ADDRESS
 #error Beeper address and i2c key address must be identical
@@ -658,6 +660,12 @@ u8g_uint_t u8_tx = 0, u8_ty = 0;
 
 void u8PrintChar(char c)
 {
+#if UI_LANGUAGE==1000
+	if (c > 0 && (c <= 0x12 || c >= 0x20))
+		u8_tx += u8g_DrawGlyph(&u8g, u8_tx, u8_ty - 2, c);
+	else
+		u8_tx += u8g_DrawGlyph(&u8g, u8_tx, u8_ty, c);
+#else
     switch(c)
     {
     case 0x7E: // right arrow
@@ -678,14 +686,23 @@ void u8PrintChar(char c)
     default:
         u8_tx += u8g_DrawGlyph(&u8g, u8_tx, u8_ty, c);
     }
+#endif
 }
-void printU8GRow(uint8_t x,uint8_t y,char *text)
+typedef uint8_t BOOL;
+#define TRUE 1
+#define FALSE 0
+void printU8GRow(uint8_t x,uint8_t y,char *text, BOOL chinese = FALSE)
 {
     char c;
     while((c = *(text++)) != 0)
-        x += u8g_DrawGlyph(&u8g,x,y,c);
+	{
+		if (chinese && c > 0 && (c <= 0x12 || c >= 0x20))
+			x += u8g_DrawGlyph(&u8g,x,y - 2,c);
+		else
+			x += u8g_DrawGlyph(&u8g,x,y,c);
+	}
 }
-void UIDisplay::printRow(uint8_t r,char *txt,char *txt2,uint8_t changeAtCol)
+void UIDisplay::printRow(uint8_t r,char *txt,char *txt2,uint8_t changeAtCol, int8_t arrow)
 {
     changeAtCol = RMath::min(UI_COLS,changeAtCol);
     uint8_t col=0;
@@ -694,12 +711,20 @@ void UIDisplay::printRow(uint8_t r,char *txt,char *txt2,uint8_t changeAtCol)
     int y = r*UI_FONT_HEIGHT;
     if(!u8g_IsBBXIntersection(&u8g,0,y,UI_LCD_WIDTH,UI_FONT_HEIGHT+2)) return; // row not visible
     u8_tx = 0;
-    u8_ty = y+UI_FONT_HEIGHT; //set position
+#if UI_LANGUAGE==1000
+    u8_ty = y+UI_FONT_HEIGHT - 1;
+#else
+	u8_ty = y+UI_FONT_HEIGHT;
+#endif
     bool highlight = ((uint8_t)(*txt) == CHAR_SELECTOR) || ((uint8_t)(*txt) == CHAR_SELECTED);
     if(highlight)
     {
         u8g_SetColorIndex(&u8g,1);
-        u8g_draw_box(&u8g, 0, y+1, u8g_GetWidth(&u8g), UI_FONT_HEIGHT+1);
+#if UI_LANGUAGE==1000
+        u8g_draw_box(&u8g, 0, y, u8g_GetWidth(&u8g), UI_FONT_HEIGHT - 1);
+#else
+		u8g_draw_box(&u8g, 0, y+1, u8g_GetWidth(&u8g), UI_FONT_HEIGHT + 1);
+#endif
         u8g_SetColorIndex(&u8g,0);
     }
     char c;
@@ -718,6 +743,11 @@ void UIDisplay::printRow(uint8_t r,char *txt,char *txt2,uint8_t changeAtCol)
             col++;
         }
     }
+	if (arrow != 0)
+	{
+		u8_tx = (UI_COLS - 1) * UI_FONT_WIDTH;  // Print at the end of the line
+		u8PrintChar(arrow);
+	}
     if(highlight)
     {
         u8g_SetColorIndex(&u8g,1);
@@ -731,8 +761,7 @@ void UIDisplay::printRow(uint8_t r,char *txt,char *txt2,uint8_t changeAtCol)
 void initializeLCD()
 {
 #ifdef U8GLIB_ST7920
-//U8GLIB_ST7920_128X64_1X u8g(UI_DISPLAY_D4_PIN, UI_DISPLAY_ENABLE_PIN, UI_DISPLAY_RS_PIN);
-    u8g_InitSPI(&u8g,&u8g_dev_st7920_128x64_sw_spi,  UI_DISPLAY_D4_PIN, UI_DISPLAY_ENABLE_PIN, UI_DISPLAY_RS_PIN, U8G_PIN_NONE, U8G_PIN_NONE);
+    u8g_InitSPI(&u8g,&u8g_dev_st7920_128x64_sw_spi, 11, 16, 17, U8G_PIN_NONE, U8G_PIN_NONE);
 #endif
     u8g_Begin(&u8g);
     //u8g.firstPage();
@@ -839,12 +868,16 @@ void UIDisplay::initialize()
     do
     {
 #endif
+/*
         for(uint8_t y=0; y<UI_ROWS; y++) displayCache[y][0] = 0;
         printRowP(0, versionString);
-        printRowP(1, PSTR(UI_PRINTER_NAME));
-#if UI_ROWS>2
-        printRowP(UI_ROWS-1, PSTR(UI_PRINTER_COMPANY));
+        printRowP(1, PSTR(UI_TEXT_REPRAP));
+#if UI_ROWS>3
+		printRowP(UI_ROWS-2, PSTR(UI_TEXT_COMPANY));
+        printRowP(UI_ROWS-1, PSTR(UI_TEXT_COMPANY_URL));
 #endif
+*/
+		u8g_DrawXBM(&u8g, 0, 0, splash_xbm_width, splash_xbm_height, splash_xbm);
 #if UI_DISPLAY_TYPE == 5
     }
     while( u8g_NextPage(&u8g) );  //end picture loop
@@ -1150,7 +1183,8 @@ void UIDisplay::parse(char *txt,bool ram)
             }
             if(c2=='B')
             {
-                addInt((int)PrintLine::linesCount,2);
+                //addInt((int)PrintLine::linesCount,2);
+				addInt((int)Printer::menuMode,2);
                 break;
             }
             if(c2=='f')
@@ -1331,7 +1365,7 @@ void UIDisplay::parse(char *txt,bool ram)
             if(c2=='e') addFloat(Extruder::current->stepsPerMM,3,1);
             break;
         case 'P':
-            if(c2=='N') addStringP(PSTR(UI_PRINTER_NAME));
+            if(c2=='N') addStringP(PSTR(UI_TEXT_REPRAP));
             break;
         case 'U':
             if(c2=='t')   // Printing time
@@ -1509,7 +1543,14 @@ void sdrefresh(uint8_t &r,char cache[UI_ROWS][MAX_COLS+1])
             if(DIR_IS_SUBDIR(p))
                 printCols[uid.col++] = 6; // Prepend folder symbol
             length = RMath::min((int)strlen(tempLongFilename), MAX_COLS-uid.col);
-            memcpy(printCols+uid.col, tempLongFilename, length);
+            //memcpy(printCols+uid.col, tempLongFilename, length);
+			for (int i = 0; i < length; ++i)
+			{
+				uint8_t c = *(tempLongFilename + i);
+				if (c < 0x20 || c >= 0x80) c = '?';
+				*(printCols + uid.col + i) = c;
+			}
+			
             uid.col += length;
             printCols[uid.col] = 0;
             strcpy(cache[r++],printCols);
@@ -1518,11 +1559,31 @@ void sdrefresh(uint8_t &r,char cache[UI_ROWS][MAX_COLS+1])
     #endif
 }
 // Refresh current menu page
+uint8_t fine_refresh_mode = 0;
+uint8_t fine_refresh_counter = 0;
+		
+	
 void UIDisplay::refreshPage()
 {
+	if ((fine_refresh_mode == 0) && PrintLine::hasLines())
+	{
+		
+		fine_refresh_mode = 1;
+		fine_refresh_counter = 0;
+	}
+	else if ((fine_refresh_mode == 1) && !PrintLine::hasLines())
+	{
+		// Exit fine_refresh mode
+		fine_refresh_mode = 0;
+		fine_refresh_counter = 0;
+	}
+	
     uint8_t r;
     uint8_t mtype;
-    char cache[UI_ROWS][MAX_COLS+1];
+    //char cache[UI_ROWS][MAX_COLS+1];
+	static char cache[6][MAX_COLS+1];
+	if (!fine_refresh_mode || (fine_refresh_mode && fine_refresh_counter == 0))
+		for (int i = 0; i < UI_ROWS; ++i) cache[i][MAX_COLS] = 0;  
     adjustMenuPos();
 #if UI_AUTORETURN_TO_MENU_AFTER!=0
     // Reset timeout on menu back when user active on menu
@@ -1531,72 +1592,83 @@ void UIDisplay::refreshPage()
 #endif
     encoderStartScreen = uid.encoderLast;
 
-    // Copy result into cache
-    if(menuLevel==0)
-    {
-        UIMenu *men = (UIMenu*)pgm_read_word(&(ui_pages[menuPos[0]]));
-        uint8_t nr = pgm_read_word_near(&(men->numEntries));
-        UIMenuEntry **entries = (UIMenuEntry**)pgm_read_word(&(men->entries));
-        for(r=0; r<nr && r<UI_ROWS; r++)
-        {
-            UIMenuEntry *ent =(UIMenuEntry *)pgm_read_word(&(entries[r]));
-            col=0;
-            parse((char*)pgm_read_word(&(ent->text)),false);
-            strcpy(cache[r],printCols);
-        }
-    }
-    else
-    {
-        UIMenu *men = (UIMenu*)menu[menuLevel];
-        uint8_t nr = pgm_read_word_near((void*)&(men->numEntries));
-        mtype = pgm_read_byte((void*)&(men->menuType));
-        uint8_t offset = menuTop[menuLevel];
-        UIMenuEntry **entries = (UIMenuEntry**)pgm_read_word(&(men->entries));
-        for(r=0; r+offset<nr && r<UI_ROWS; )
-        {
-            UIMenuEntry *ent =(UIMenuEntry *)pgm_read_word(&(entries[r+offset]));
-            if(!ent->showEntry())
-            {
-                offset++;
-                continue;
-            }
-            unsigned char entType = pgm_read_byte(&(ent->menuType));
-            unsigned int entAction = pgm_read_word(&(ent->action));
-            col=0;
-            if(entType>=2 && entType<=4)
-            {
-                if(r+offset==menuPos[menuLevel] && activeAction!=entAction)
-                    printCols[col++]=CHAR_SELECTOR;
-                else if(activeAction==entAction)
-                    printCols[col++]=CHAR_SELECTED;
-                else
-                    printCols[col++]=' ';
-            }
-            parse((char*)pgm_read_word(&(ent->text)),false);
-            if(entType==2)   // Draw submenu marker at the right side
-            {
-                while(col<UI_COLS-1) printCols[col++]=' ';
-                if(col>UI_COLS)
-                {
-                    printCols[RMath::min(UI_COLS-1,col)] = CHAR_RIGHT;
-                }
-                else
-                    printCols[col] = CHAR_RIGHT; // Arrow right
-                printCols[++col] = 0;
-            }
-            strcpy(cache[r],printCols);
-            r++;
-        }
-    }
+	
+	if (!fine_refresh_mode || (fine_refresh_mode && fine_refresh_counter == 0))
+	{
+		// Copy result into cache
+		if(menuLevel==0)
+		{
+			UIMenu *men = (UIMenu*)pgm_read_word(&(ui_pages[menuPos[0]]));
+			uint8_t nr = pgm_read_word_near(&(men->numEntries));
+			UIMenuEntry **entries = (UIMenuEntry**)pgm_read_word(&(men->entries));
+			//for(r=0; r<nr && r<UI_ROWS; r++)
+			for(r=0; r<nr && r<6; r++)
+			{
+				UIMenuEntry *ent =(UIMenuEntry *)pgm_read_word(&(entries[r]));
+				col=0;
+				parse((char*)pgm_read_word(&(ent->text)),false);
+				strcpy(cache[r],printCols);
+			}
+		}
+		else
+		{
+			UIMenu *men = (UIMenu*)menu[menuLevel];
+			uint8_t nr = pgm_read_word_near((void*)&(men->numEntries));
+			mtype = pgm_read_byte((void*)&(men->menuType));
+			uint8_t offset = menuTop[menuLevel];
+			UIMenuEntry **entries = (UIMenuEntry**)pgm_read_word(&(men->entries));
+			for(r=0; r+offset<nr && r<UI_ROWS; )
+			{
+				printCols[MAX_COLS] = 0;  // Clear the special position.
+				UIMenuEntry *ent =(UIMenuEntry *)pgm_read_word(&(entries[r+offset]));
+				if(!ent->showEntry())
+				{
+					offset++;
+					continue;
+				}
+				unsigned char entType = pgm_read_byte(&(ent->menuType));
+				unsigned int entAction = pgm_read_word(&(ent->action));
+				col=0;
+				if(entType>=2 && entType<=4)
+				{
+					if(r+offset==menuPos[menuLevel] && activeAction!=entAction)
+						printCols[col++]=CHAR_SELECTOR;
+					else if(activeAction==entAction)
+						printCols[col++]=CHAR_SELECTED;
+					else
+						printCols[col++]=' ';
+				}
+				parse((char*)pgm_read_word(&(ent->text)),false);
+				if(entType==2)   // Draw submenu marker at the right side
+				{
+					/*
+					while(col<UI_COLS-1) printCols[col++]=' ';
+					if(col>UI_COLS)
+					{
+						printCols[RMath::min(UI_COLS-1,col)] = CHAR_RIGHT;
+					}
+					else
+						printCols[col] = CHAR_RIGHT; // Arrow right
+					printCols[++col] = 0;
+					*/
+					printCols[MAX_COLS] = CHAR_RIGHT;  // Just put this mark at the special position
+				}
+				strcpy(cache[r],printCols);
+				cache[r][MAX_COLS] = printCols[MAX_COLS];  // Copy the special mark
+				r++;
+			}
+		}
 #if SDSUPPORT
-    if(mtype==1)
-    {
-        sdrefresh(r,cache);
-    }
+		if(mtype==1)
+		{
+			sdrefresh(r,cache);
+		}
 #endif
-    printCols[0]=0;
-    while(r<UI_ROWS)
-        strcpy(cache[r++],printCols);
+		printCols[0]=0;
+		while(r<UI_ROWS)
+			strcpy(cache[r++],printCols);
+	}
+
     // Compute transition
     uint8_t transition = 0; // 0 = display, 1 = up, 2 = down, 3 = left, 4 = right
 #if UI_ANIMATION
@@ -1688,7 +1760,8 @@ void UIDisplay::refreshPage()
                 cache[1][0] = Printer::isAnimation()?'\x08':'\x09';
             else
 #endif
-                cache[1][0] = '\x0a'; //off
+                //cache[1][0] = '\x0a'; //off
+				cache[1][0] = ' ';  // Don't show the icon for extruder 2
 #if HAVE_HEATED_BED==true
 
             //heatbed animated icons
@@ -1726,8 +1799,10 @@ void UIDisplay::refreshPage()
         }
 #endif
         //u8g picture loop
-        u8g_FirstPage(&u8g);
-        do
+		if (!fine_refresh_mode || (fine_refresh_mode && fine_refresh_counter == 0))
+			u8g_FirstPage(&u8g);
+        //do
+		while (true)
         {
 #endif
             if(transition == 0)
@@ -1737,49 +1812,84 @@ void UIDisplay::refreshPage()
                 if(menuLevel==0 && menuPos[0] == 0 )
                 {
                     u8g_SetFont(&u8g,UI_FONT_SMALL);
-                    uint8_t py = 8;
-                    for(uint8_t r=0; r<3; r++)
-                    {
-                        if(u8g_IsBBXIntersection(&u8g, 0, py-UI_FONT_SMALL_HEIGHT, 1, UI_FONT_SMALL_HEIGHT))
-                            printU8GRow(0,py,cache[r]);
-                        py+=10;
-                    }
-                    //fan
-                    if(u8g_IsBBXIntersection(&u8g, 0, 30-UI_FONT_SMALL_HEIGHT, 1, UI_FONT_SMALL_HEIGHT))
-                        printU8GRow(117,30,fanString);
-                    drawVProgressBar(116, 0, 9, 20, fanPercent);
+					
+					uint8_t py = 8;
+					for(uint8_t r=0; r<3; r++)
+					{
+						if(u8g_IsBBXIntersection(&u8g, 0, py-UI_FONT_SMALL_HEIGHT, 1, UI_FONT_SMALL_HEIGHT))
+						{
+							if (r == 1)
+								printU8GRow(1, py, cache[r]);  // The 'y' row move 1 pixel right --->.
+							else
+								printU8GRow(0,py,cache[r]);
+						}
+						py+=10;
+					}
+					//fan
+					if(u8g_IsBBXIntersection(&u8g, 0, 30-UI_FONT_SMALL_HEIGHT, 1, UI_FONT_SMALL_HEIGHT))
+						printU8GRow(117,30,fanString);
+					drawVProgressBar(116, 0, 9, 20, fanPercent);
+				
+#if UI_LANGUAGE!=1000
                     if(u8g_IsBBXIntersection(&u8g, 0, 43-UI_FONT_SMALL_HEIGHT, 1, UI_FONT_SMALL_HEIGHT))
                         printU8GRow(0,43,cache[3]); //mul
                     if(u8g_IsBBXIntersection(&u8g, 0, 52-UI_FONT_SMALL_HEIGHT, 1, UI_FONT_SMALL_HEIGHT))
                         printU8GRow(0,52,cache[4]); //buf
-
+#endif
 #if SDSUPPORT
-                    //SD Card
-                    if(sd.sdactive && u8g_IsBBXIntersection(&u8g, 70, 48-UI_FONT_SMALL_HEIGHT, 1, UI_FONT_SMALL_HEIGHT))
-                    {
-                        printU8GRow(70,48,"SD");
-                        drawHProgressBar(83,42, 40, 5, sdPercent);
-                    }
+					//SD Card
+					if(sd.sdactive && u8g_IsBBXIntersection(&u8g, 0, 48-UI_FONT_SMALL_HEIGHT, 1, UI_FONT_SMALL_HEIGHT))
+					{
+						printU8GRow(70,48,"SD");
+						drawHProgressBar(83,42, 40, 5, sdPercent);
+					}
+#endif
+#if UI_LANGUAGE==1000
+                    u8g_SetFont(&u8g, UI_FONT_DEFAULT);
 #endif
                     //Status
-                    py = u8g_GetHeight(&u8g)-2;
-                    if(u8g_IsBBXIntersection(&u8g, 70, py-UI_FONT_SMALL_HEIGHT, 1, UI_FONT_SMALL_HEIGHT))
-                        printU8GRow(0,py,cache[5]);
+#if UI_LANGUAGE==1000
+					py = u8g_GetHeight(&u8g);
+					if(u8g_IsBBXIntersection(&u8g, 0, py-UI_FONT_HEIGHT, 1, UI_FONT_HEIGHT))
+					{
+						printU8GRow(0,py,cache[5], TRUE);
+#if SDSUPPORT
+						if(!(sd.sdactive && sd.sdmode))
+						{
+							printU8GRow(84, py, cache[4], TRUE);  // buf
+						}
+#endif
+					}
+					if (u8g_IsBBXIntersection(&u8g, 0, py-UI_FONT_HEIGHT * 2, 1, UI_FONT_HEIGHT))
+					{
+						printU8GRow(0, py - UI_FONT_HEIGHT, cache[3], TRUE);  // mul
+					}
+#else
+					py = u8g_GetHeight(&u8g)-2;
+					if(u8g_IsBBXIntersection(&u8g, 0, py-UI_FONT_SMALL_HEIGHT, 1, UI_FONT_SMALL_HEIGHT))
+						printU8GRow(0,py,cache[5], FALSE);
+#endif
 
-                    //divider lines
-                    u8g_DrawHLine(&u8g,0, 32, u8g_GetWidth(&u8g));
-                    if ( u8g_IsBBXIntersection(&u8g, 55, 0, 1, 32) )
-                    {
-                        u8g_draw_vline(&u8g,112, 0, 32);
-                        u8g_draw_vline(&u8g,62, 0, 32);
-                    }
+					//divider lines
+					u8g_DrawHLine(&u8g,0, 32, u8g_GetWidth(&u8g));
+					if ( u8g_IsBBXIntersection(&u8g, 0, 0, 1, 32) )
+					{
+						u8g_draw_vline(&u8g,112, 0, 32);
+						u8g_draw_vline(&u8g,62, 0, 32);
+					}
+#if UI_LANGUAGE!=1000
                     u8g_SetFont(&u8g, UI_FONT_DEFAULT);
+#endif
                 }
                 else
                 {
 #endif
                     for(y=0; y<UI_ROWS; y++)
-                        printRow(y,&cache[y][off[y]],NULL,UI_COLS);
+					{
+                        //printRow(y,&cache[y][off[y]],NULL,UI_COLS);
+						int8_t arrow = cache[y][MAX_COLS];
+						printRow(y,&cache[y][off[y]],NULL,UI_COLS, arrow);
+					}
 #if UI_DISPLAY_TYPE == 5
                 }
 #endif
@@ -1852,9 +1962,31 @@ void UIDisplay::refreshPage()
             }
 #endif
 #if UI_DISPLAY_TYPE == 5
+
+			uint8_t result_next_page = u8g_NextPage(&u8g);
+			if (result_next_page)
+			{
+				// There is next page available.
+				if (fine_refresh_mode)
+				{
+					fine_refresh_counter++;
+					if ((fine_refresh_counter & 1) == 0)
+						break;
+				}
+			}
+			else
+			{
+				// This is the last page
+				if (fine_refresh_mode)
+				{
+					fine_refresh_counter = 0;
+				}
+				Printer::toggleAnimation();
+				break;
+			}
         }
-        while( u8g_NextPage(&u8g) );  //end picture loop
-        Printer::toggleAnimation();
+//        while( u8g_NextPage(&u8g) );  //end picture loop
+//        Printer::toggleAnimation();
 #endif
     } // for l
 #if UI_ANIMATION
@@ -1884,6 +2016,7 @@ void UIDisplay::pushMenu(void *men,bool refresh)
     if(refresh)
         refreshPage();
 }
+
 void UIDisplay::okAction()
 {
     if(Printer::isUIErrorMessage()) {
@@ -2006,7 +2139,9 @@ void UIDisplay::okAction()
 #endif
 }
 
-#define INCREMENT_MIN_MAX(a,steps,_min,_max) if ( (increment<0) && (_min>=0) && (a<_min-increment*steps) ) {a=_min;} else { a+=increment*steps; if(a<_min) a=_min; else if(a>_max) a=_max;};
+#define INCREMENT_MIN_MAX(a,steps,_min,_max) if ( (increment<0) && (_min>=0) && (a<_min-increment*steps) ) {a=_min;} \
+	else if ( (increment > 0) && (a >_max-increment*steps) ) {a=_max;} \
+	else { a+=increment*steps; if(a<_min) a=_min; else if(a>_max) a=_max;};
 
 void UIDisplay::adjustMenuPos()
 {
@@ -2476,7 +2611,12 @@ void UIDisplay::executeAction(int action)
     else
         switch(action)
         {
-        case UI_ACTION_OK:
+//////////////////////////////////////////////////////////////		
+		case UI_ACTION_BUILD_PLATE:
+			ui_menu_build_plate_level();
+			break;
+/////////////////////////////////////////////////////////
+		case UI_ACTION_OK:
             okAction();
             skipBeep=true; // Prevent double beep
             break;
@@ -2998,7 +3138,7 @@ void UIDisplay::slowAction()
         if(epos)
         {
             nextPreviousAction(epos);
-            BEEP_SHORT
+            BEEP_SHORT//上下菜单选择声音
             refresh=1;
         }
         if(lastAction!=lastButtonAction)
@@ -3044,6 +3184,12 @@ void UIDisplay::slowAction()
         activeAction = 0;
     }
 #endif
+	uint32_t refresh_interval;
+	if (PrintLine::hasLines())
+		refresh_interval = 80;
+	else
+		refresh_interval = 800;
+	
     if(menuLevel==0 && time>4000)
     {
         if(time-lastSwitch>UI_PAGES_DURATION)
@@ -3056,9 +3202,11 @@ void UIDisplay::slowAction()
 #endif
             refresh = 1;
         }
-        else if(time-lastRefresh>=1000) refresh=1;
-    }
-    else if(time-lastRefresh>=800)
+        //else if(time-lastRefresh>=1000) refresh=1;
+		else if(time - lastRefresh >= refresh_interval) refresh=1;
+	}
+//    else if(time-lastRefresh>=800)
+	else if (time - lastRefresh >= refresh_interval)
     {
         UIMenu *men = (UIMenu*)menu[menuLevel];
         uint8_t mtype = pgm_read_byte((void*)&(men->menuType));
@@ -3067,6 +3215,13 @@ void UIDisplay::slowAction()
     }
     if(refresh)
     {
+		//if (PrintLine::hasLines() && PrintLine::chanceToUpdateUI == 0)
+		//{
+			// In printing and not a good chance to update UI.
+		//	return;
+		//}
+		PrintLine::chanceToUpdateUI = 0;
+		
         if (menuLevel > 1 || Printer::isAutomount())
         {
             shift++;
@@ -3113,6 +3268,200 @@ const int8_t encoder_table[16] PROGMEM = {0,0,-1,0,0,0,0,1,1,0,0,0,0,-1,0,0}; //
 //const int8_t encoder_table[16] PROGMEM = {0,1,0,0,-1,0,0,0,0,0,0,0,0,0,0,0}; // Quart speed
 const int8_t encoder_table[16] PROGMEM = {0,0,0,0,0,0,0,0,0,0,0,-1,0,0,1,0}; // Quart speed
 #endif
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+void build_level_1();
+void build_level_2();
+void build_level_3();
+void build_level_4();
+void build_level_5();
+void build_level_6();
+void build_level_7();
 
+static const char build_level_txt[] PROGMEM = "Push button to next->";
+
+static const char build_level_txt_1[] PROGMEM = "7>1";
+static const char build_level_txt_2[] PROGMEM = "7>6";
+static const char build_level_txt_3[] PROGMEM = "7>2";
+static const char build_level_txt_4[] PROGMEM = "7>3";
+static const char build_level_txt_5[] PROGMEM = "7>4";
+static const char build_level_txt_6[] PROGMEM = "7>5";
+static const char build_level_txt_7[] PROGMEM = "7>7";
+
+static const char build_level_txt1_1[] PROGMEM = "I will guide you";
+static const char build_level_txt1_2[] PROGMEM = "through the process";
+static const char build_level_txt1_3[] PROGMEM = "of adjusting your";
+static const char build_level_txt1_4[] PROGMEM = "buildplate.";
+
+static const char build_level_txt2_1[] PROGMEM = "The five test point";
+static const char build_level_txt2_2[] PROGMEM = "screw till the nozzle";
+static const char build_level_txt2_3[] PROGMEM = "is a millimeter away";
+static const char build_level_txt2_4[] PROGMEM = "from the buildplate.";
+
+static const char build_level_txt3_1[] PROGMEM = "The first test point";
+static const char build_level_txt3_2[] PROGMEM = "screw till the nozzle";
+static const char build_level_txt3_3[] PROGMEM = "is a millimeter away";
+static const char build_level_txt3_4[] PROGMEM = "from the buildplate.";
+
+static const char build_level_txt4_1[] PROGMEM = "The second test point";
+static const char build_level_txt4_2[] PROGMEM = "screw till the nozzle";
+static const char build_level_txt4_3[] PROGMEM = "is a millimeter away";
+static const char build_level_txt4_4[] PROGMEM = "from the buildplate.";
+
+static const char build_level_txt5_1[] PROGMEM = "The third test point";
+static const char build_level_txt5_2[] PROGMEM = "screw till the nozzle";
+static const char build_level_txt5_3[] PROGMEM = "is a millimeter away";
+static const char build_level_txt5_4[] PROGMEM = "from the buildplate.";
+
+static const char build_level_txt6_1[] PROGMEM = "The fourth test point";
+static const char build_level_txt6_2[] PROGMEM = "screw till the nozzle";
+static const char build_level_txt6_3[] PROGMEM = "is a millimeter away";
+static const char build_level_txt6_4[] PROGMEM = "from the buildplate.";
+
+static const char build_level_txt7_1[] PROGMEM = "You have finish";
+static const char build_level_txt7_2[] PROGMEM = "the process of";
+static const char build_level_txt7_3[] PROGMEM = "adjusting your";
+static const char build_level_txt7_4[] PROGMEM = "buildplate.";
+#define display_txt(num) 	u8g_FirstPage(&u8g);\
+	do{\
+		uid.printRowP(0, build_level_txt_ ## num);\
+		uid.printRowP(1, build_level_txt ## num ## _1 );\
+		uid.printRowP(2, build_level_txt ## num ## _2);\
+		uid.printRowP(3, build_level_txt ## num ## _3);\
+		uid.printRowP(4, build_level_txt ## num ## _4);\
+		uid.printRowP(5, build_level_txt);\
+	} while (u8g_NextPage(&u8g));\
+
+typedef void(*menuFunc_t)();
+menuFunc_t currentMenu;
+boolean ok_key;
+boolean ok_break;
+int8_t epos;
+long unsigned int check_time = 0;
+#define delaytime 300
+
+void build_level_1()
+{
+	if (ok_key)
+	{
+		BEEP_SHORT
+		PrintLine::moveRelativeDistanceInStepsReal(0, 0, 1000, 0, Printer::homingFeedrate[Z_AXIS], false);
+
+		PrintLine::moveRelativeDistanceInStepsReal(1000, 0, 0, 0, Printer::homingFeedrate[X_AXIS], false);
+		PrintLine::moveRelativeDistanceInStepsReal(0, 1000, 0, 0, Printer::homingFeedrate[Y_AXIS], false);
+
+		PrintLine::moveRelativeDistanceInStepsReal(0, 0,-1000, 0, Printer::homingFeedrate[Z_AXIS], false);
+		currentMenu = build_level_3;
+		ok_key = false;
+		delay(300);
+	}
+	display_txt(1);//guide
+}
+
+void build_level_2()
+{
+	if (ok_key)
+	{
+		BEEP_SHORT
+		PrintLine::moveRelativeDistanceInStepsReal(0, 0, 2000, 0, Printer::homingFeedrate[Z_AXIS], false);
+		while (PrintLine::hasLines());
+		Printer::disableXStepper();
+		Printer::disableYStepper();
+		Printer::disableZStepper();
+		currentMenu = build_level_7;
+		ok_key = false;
+		delay(300);
+	}
+	display_txt(2);//five
+}
+
+void build_level_3()
+{
+	if (ok_key)
+	{
+		PrintLine::moveRelativeDistanceInStepsReal(0, 0, 1000, 0, Printer::homingFeedrate[Z_AXIS], false);
+
+		PrintLine::moveRelativeDistanceInStepsReal(14000, 0, 0, 0, Printer::homingFeedrate[X_AXIS], false);
+
+		PrintLine::moveRelativeDistanceInStepsReal(0, 0, -1000, 0, Printer::homingFeedrate[Z_AXIS], false);
+		currentMenu = build_level_4;
+		ok_key = false;
+		delay(300);
+	}
+	display_txt(3);//first
+}
+void build_level_4()
+{
+	if (ok_key)
+	{
+		PrintLine::moveRelativeDistanceInStepsReal(0, 0, 1000, 0, Printer::homingFeedrate[Z_AXIS], false);
+		PrintLine::moveRelativeDistanceInStepsReal(0, 14000, 0, 0, Printer::homingFeedrate[Y_AXIS], false);
+		PrintLine::moveRelativeDistanceInStepsReal(0, 0,-1000, 0, Printer::homingFeedrate[Z_AXIS], false);
+		currentMenu = build_level_5;
+		ok_key = false;
+		delay(300);
+	}
+	display_txt(4);//second
+}
+void build_level_5()
+{
+	if (ok_key)
+	{
+		PrintLine::moveRelativeDistanceInStepsReal(0, 0, 1000, 0, Printer::homingFeedrate[Z_AXIS], false);
+		PrintLine::moveRelativeDistanceInStepsReal(-14000, 0, 0, 0, Printer::homingFeedrate[X_AXIS], false);
+		PrintLine::moveRelativeDistanceInStepsReal(0, 0, -1000, 0, Printer::homingFeedrate[Z_AXIS], false);
+		currentMenu = build_level_6;
+		ok_key = false;
+		delay(300);
+	}
+	display_txt(5);//third
+}
+void build_level_6()
+{
+	if (ok_key)
+	{
+		PrintLine::moveRelativeDistanceInStepsReal(0, 0, 1000, 0, Printer::homingFeedrate[Z_AXIS], false);
+		PrintLine::moveRelativeDistanceInStepsReal(7000, 0, 0, 0, Printer::homingFeedrate[X_AXIS], false);
+		PrintLine::moveRelativeDistanceInStepsReal(0, -7000, 0, 0, Printer::homingFeedrate[Y_AXIS], false);
+		PrintLine::moveRelativeDistanceInStepsReal(0, 0,-1000, 0, Printer::homingFeedrate[Z_AXIS], false);
+		currentMenu = build_level_2;
+		ok_key = false;
+		delay(300);
+	}
+	display_txt(6);//thourth
+}
+void build_level_7()
+{
+	if (ok_key)
+	{
+		ok_key = false;
+		uid.menuLevel = 1;
+		ok_break = true;
+	}
+	display_txt(7);
+}
+void ui_menu_build_plate_level()
+{
+	currentMenu = build_level_1;
+	ok_key = false;
+	BEEP_SHORT
+	Printer::homeAxis(true, true, true);
+	ok_break = false;
+	while (true)
+	{
+		if (millis() > check_time + 500)
+		{
+			if (READ(28) == 0)
+			{
+				ok_key = true;
+			}
+		}
+		currentMenu();
+		if (ok_break)
+		{
+			break;
+		}
+	}
+}
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
 #endif
 

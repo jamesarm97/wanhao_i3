@@ -160,6 +160,7 @@ extern uint8_t lastMoveID;
 class UIDisplay;
 class PrintLine   // RAM usage: 24*4+15 = 113 Byte
 {
+	static volatile uint8_t chanceToUpdateUI;
     friend class UIDisplay;
 #if CPU_ARCH==ARCH_ARM
     static volatile bool nlFlag;
@@ -189,6 +190,9 @@ private:
     float endSpeed;                 ///< Exit speed in mm/s
     float minSpeed;
     float distance;
+	
+	uint8_t lineChance;
+	
 #if NONLINEAR_SYSTEM
     uint8_t numDeltaSegments;		///< Number of delta segments left in line. Decremented by stepper timer.
     uint8_t moveID;					///< ID used to identify moves which are all part of the same line
@@ -429,6 +433,8 @@ public:
     {
         linesCount = 0;
         linesPos = linesWritePos;
+		
+        Printer::setMenuMode(MENU_MODE_PRINTING,false);
     }
     inline void updateAdvanceSteps(speed_t v,uint8_t max_loops,bool accelerate)
     {
@@ -662,7 +668,5 @@ public:
 #endif
 #endif
 };
-
-
 
 #endif // MOTION_H_INCLUDED
